@@ -1,0 +1,158 @@
+=====================================================================
+TDA357 / DIT621 -- Database Programming Assignment (Lab PM), LP3 2019
+Task 2: Database design -- the final ("perfect") schema
+Author: Abel Haile Magicho
+
+The final schema is the E-R schema (ER-schema.txt), completed
+with the constraints and relations that only the FD analysis
+revealed, and then compared with the given schema of Task 1.
+Notation: * = primary key attributes, -> = reference.
+=====================================================================
+
+Comparing the E-R schema and the BCNF (FD) schema
+-------------------------------------------------
+The two methods agree on the core of the design: departments,
+programmes, branches, students, courses, limited courses,
+classifications, taken courses and waiting lists all appear in
+both, with the same keys.  The interesting points are the
+differences:
+
+Constraints only the E-R approach revealed:
+  * The CARDINALITY of relationships.  FDs never say that a
+    course is given by AT MOST one department, that a student
+    belongs to AT MOST one programme, or that LimitedCourse is
+    a subclass (ISA) of Course.  In the E-R model these are
+    structural; in the FD world "ccode -> givendept" is
+    indistinguishable from any other FD.
+  * Branch is a WEAK entity: it has no existence or identity of
+    its own, only via its programme.  FD analysis sees the
+    composite key but not the existential dependency.
+  * Participation: every course must be given by a department
+    and every student must belong to a programme (total
+    participation on the "many" side) -- expressed by NOT NULL
+    references, not by any FD.
+
+Constraints only the FD approach revealed:
+  * login is a second key of Students (login -> idnr): in the
+    E-R diagram the login is just an attribute; the FD analysis
+    forces UNIQUE (login).
+  * depabbr is a second key of Departments (depabbr -> dep):
+    UNIQUE (abbr).
+  * A queue position may be held by at most one student per
+    course ((course, position) -> student): this FD is easy to
+    miss completely in the E-R model, where position is just an
+    attribute of the waiting relationship.  It gives the extra
+    key UNIQUE (course, position) of WaitingList.
+  * recomcredits is determined by (programme, branch): a fact
+    about branches that the pure relationship translation would
+    have scattered into RecommendedBranch.
+
+Constraints NEITHER approach guarantees:
+  * That the branch a student chooses belongs to the student's
+    own programme.  The E-R translation with simple references
+    (student -> Students, (branch, program) -> Branches) happily
+    stores a CSEP branch for an AT student; the FDs alone do not
+    forbid it either (idnr -> branch and idnr -> prog are
+    separate FDs -- nothing ties the two together).  It is
+    enforced only by the additional composite reference below.
+  * That a student is not simultaneously registered and waiting
+    for the same course, has not already passed a course he/she
+    registers for, has passed the prerequisites, and so on:
+    these are dynamic/business rules, handled by the triggers
+    of Task 3, not by any static schema.
+  * That every programme has at least one host, that the
+    prerequisite graph is acyclic, and that grades are from the
+    set {'U','3','4','5'} (the last one IS handled, by a CHECK
+    constraint, but neither E-R nor FD theory produces it).
+  * "A student can only attend one programme" is in fact
+    guaranteed (Students.program is a single-valued reference);
+    the FD S1 (idnr -> prog) confirms it.  What is NOT
+    guaranteed by either method alone is the analogous statement
+    for branches -- see the first point.
+
+The final schema
+----------------
+Departments(name*, abbr)
+    UNIQUE (abbr)                                    -- from D2
+Programs(name*, abbr)
+HostedBy(program*, department*)
+    program    -> Programs(name)
+    department -> Departments(name)
+Branches(name*, program*)
+    program -> Programs(name)
+Students(idnr*, name, login, program)
+    UNIQUE (login)                                   -- from S2
+    UNIQUE (idnr, program)                           -- (a) technical
+    program -> Programs(name)
+StudentBranches(student*, branch, program)
+    (student, program) -> Students(idnr, program)    -- the extra
+    (branch, program)  -> Branches(name, program)    -- reference
+Courses(code*, name, credits, givenBy)
+    givenBy -> Departments(name)
+LimitedCourses(code*, seats)
+    code -> Courses(code)
+Classifications(name*)
+ClassifiedAs(course*, classification*)
+    course -> Courses(code); classification -> Classifications(name)
+Prerequisites(course*, prereq*)
+    course -> Courses(code); prereq -> Courses(code)
+MandatoryProgram(course*, program*)
+MandatoryBranch(course*, branch*, program*)
+RecommendedBranch(course*, branch*, program*)
+BranchRequirements(program*, branch*, recommendedCredits)
+    (branch, program) -> Branches(name, program)
+TakenCourse(student*, course*, grade)
+Registered(student*, course*)
+WaitingList(student*, course*, position)
+    UNIQUE (course, position)                        -- from W2
+Employees(idnr*, name, department)
+    department -> Departments(name)
+AdminOverrides(student*, course*)
+    student -> Students(idnr); course -> Courses(code)
+
+Additional UNIQUE constraints (more than the required three):
+  (a) UNIQUE (idnr, program) on Students -- purely technical:
+      it exists only so that StudentBranches can reference the
+      pair (student, program), which is the constraint that
+      prevents a student from choosing a branch of the wrong
+      programme.
+  (b) UNIQUE (course, position) on WaitingList -- from FD W2.
+  (c) UNIQUE (abbr) on Departments -- from FD D2.
+  (d) UNIQUE (login) on Students -- from FD S2.
+
+Comparison with the schema given in Task 1
+------------------------------------------
+Most of the given schema survives unchanged -- the keys, the
+weak-entity treatment of branches, the ISA table LimitedCourses
+and the relationship tables were all confirmed by both methods.
+The final schema differs from the given one by (at least) these
+points:
+
+  Additional relations (more than the required four):
+   1. HostedBy -- the given schema stores ONE host department
+      per programme (Programs.host), although the domain says
+      several departments may collaborate on a programme.  The
+      host attribute is removed and hosting becomes M:N.
+   2. BranchRequirements -- the amount of recommended credits a
+      branch demands is data of the branch, not a constant to
+      bake into every query.
+   3. Employees -- departments exist "for employees"; the given
+      schema has nobody working in them.
+   4. AdminOverrides -- bookkeeping for the administrator
+      overrides the domain explicitly permits (needed to audit
+      registrations that bypass prerequisites and seat limits).
+   5. StudentBranches as a separate relation with the composite
+      reference (in the given schema the branch choice is the
+      least-modelled part; here it is a first-class relation
+      whose references enforce the own-programme rule).
+
+  Additional constraints: the four UNIQUEs listed above, of
+  which (idnr, program) is the technical one enabling the
+  modified reference constraint in StudentBranches.
+
+  Nothing in the given inserts/views of Task 1 had to change
+  semantically: the views never used Programs.host, and the
+  Task 2 inserts.sql is the Task 1 data plus HostedBy and
+  BranchRequirements rows.  (Programs rows lose the host value;
+  CSEP is hosted by both Computing Science and Computer
+  Engineering, as the domain describes.)

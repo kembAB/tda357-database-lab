@@ -1,0 +1,185 @@
+=====================================================================
+TDA357 / DIT621 -- Database Programming Assignment (Lab PM), LP3 2019
+Task 2: Database design -- schema derived from the E-R diagram
+Author: Abel Haile Magicho
+
+Notation (as in the lectures): relation names in CamelCase, the
+attributes listed in parentheses; primary key attributes are marked
+with * and references (foreign keys) with -> Relation(attribute).
+The diagram itself is in ER.png.
+=====================================================================
+
+Entities and their translations
+-------------------------------
+
+Department is a strong entity with key name; its abbreviation is
+also unique (a secondary key):
+
+    Departments(name*, abbr)
+        UNIQUE abbr
+
+Program is a strong entity with key name (abbreviations are not
+unique, so they cannot be a key):
+
+    Programs(name*, abbr)
+
+Branch is a WEAK entity: a branch is identified by its own name
+together with the programme it belongs to (the identifying
+relationship BelongsTo with Program).  The discriminator (branch
+name) plus the key of the owner gives the key:
+
+    Branches(name*, program*)
+        program -> Programs(name)
+
+Student is a strong entity with key idnr; the login is a secondary
+key:
+
+    Students(idnr*, name, login, program)
+        UNIQUE login
+        UNIQUE (idnr, program)          (technical, see below)
+        program -> Programs(name)
+
+Course is a strong entity with key code:
+
+    Courses(code*, name, credits, givenBy)
+        givenBy -> Departments(name)
+
+LimitedCourse is a subclass of Course in an ISA relationship: it
+inherits the key of Course and adds the number of seats:
+
+    LimitedCourses(code*, seats)
+        code -> Courses(code)
+
+Classification is a strong entity whose only attribute is its key:
+
+    Classifications(name*)
+
+Employee is a strong entity (the domain states the university is
+organised into departments *for employees*); it plays no further
+role in the system but completes the model:
+
+    Employees(idnr*, name, department)
+        department -> Departments(name)
+
+Relationships and their translations
+------------------------------------
+
+HostedBy is a many-to-many relationship between Program and
+Department (a programme is hosted by one or more departments and
+several departments may collaborate on one programme -- e.g. CSEP
+is co-hosted by CS and CE).  An M:N relationship becomes its own
+relation with the keys of both participants as its key:
+
+    HostedBy(program*, department*)
+        program    -> Programs(name)
+        department -> Departments(name)
+
+GivenBy is a many-to-at-most-one relationship between Course and
+Department (every course is given by exactly one department, a
+department gives many courses).  An M:1 relationship is translated
+by putting a reference on the "many" side: Courses.givenBy above.
+No separate relation is created.
+
+BelongsTo (Branch--Program) is the identifying relationship of
+the weak entity Branch; it is already expressed by the reference
+Branches.program, no separate relation.
+
+Follows is many-to-at-most-one between Student and Program (a
+student belongs to exactly one programme): the reference
+Students.program above.
+
+Chooses is many-to-at-most-one between Student and Branch-with-
+Program (a student chooses at most one branch, and only a branch
+of his/her own programme).  A separate relation is used (rather
+than attributes on Students) so that no NULLs are needed for
+students without a branch:
+
+    StudentBranches(student*, branch, program)
+        (student, program) -> Students(idnr, program)
+        (branch, program)  -> Branches(name, program)
+
+  The first reference is the crucial one: because the pair
+  (idnr, program) is unique for Students, referencing it forces
+  the branch's programme to be the student's own programme.
+  This is why Students needs the technical UNIQUE (idnr, program).
+
+ClassifiedAs is many-to-many between Course and Classification:
+
+    ClassifiedAs(course*, classification*)
+        course         -> Courses(code)
+        classification -> Classifications(name)
+
+Prerequisite is a many-to-many relationship of Course with itself
+(a course may have many prerequisites and be a prerequisite for
+many courses):
+
+    Prerequisites(course*, prereq*)
+        course -> Courses(code)
+        prereq -> Courses(code)
+
+MandatoryForProgram is many-to-many between Course and Program:
+
+    MandatoryProgram(course*, program*)
+        course  -> Courses(code)
+        program -> Programs(name)
+
+MandatoryForBranch is many-to-many between Course and Branch:
+
+    MandatoryBranch(course*, branch*, program*)
+        course -> Courses(code)
+        (branch, program) -> Branches(name, program)
+
+RecommendedForBranch is many-to-many between Course and Branch:
+
+    RecommendedBranch(course*, branch*, program*)
+        course -> Courses(code)
+        (branch, program) -> Branches(name, program)
+
+RecommendsAtLeast: a branch also fixes *how many* credits of its
+recommended courses a student must pass ("a certain amount"; the
+graduation rules of this system use 10).  This is modelled as a
+relation with the amount as data:
+
+    BranchRequirements(program*, branch*, recommendedCredits)
+        (branch, program) -> Branches(name, program)
+
+HasTaken is many-to-many between Student and Course, with the
+grade as an attribute of the relationship:
+
+    TakenCourse(student*, course*, grade)
+        student -> Students(idnr)
+        course  -> Courses(code)
+
+IsRegisteredFor is many-to-many between Student and Course:
+
+    Registered(student*, course*)
+        student -> Students(idnr)
+        course  -> Courses(code)
+
+IsWaitingFor is many-to-many between Student and Course, with the
+queue position as an attribute of the relationship:
+
+    WaitingList(student*, course*, position)
+        student -> Students(idnr)
+        course  -> Courses(code)
+        UNIQUE (course, position)
+
+WorksIn is many-to-at-most-one between Employee and Department:
+the reference Employees.department above.
+
+OverrideRegistration records the registrations that a study
+administrator created directly, overriding prerequisite and size
+restrictions (the domain explicitly allows this, and it must be
+possible to tell such registrations apart when auditing the
+database):
+
+    AdminOverrides(student*, course*)
+        student -> Students(idnr)
+        course  -> Courses(code)
+
+Summary: the E-R translation yields the relations Departments,
+Programs, HostedBy, Branches, Students, StudentBranches, Courses,
+LimitedCourses, Classifications, ClassifiedAs, Prerequisites,
+MandatoryProgram, MandatoryBranch, RecommendedBranch,
+BranchRequirements, TakenCourse, Registered, WaitingList,
+Employees and AdminOverrides.

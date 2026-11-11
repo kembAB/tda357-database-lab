@@ -1,0 +1,108 @@
+=====================================================================
+TDA357 / DIT621 -- Database Programming Assignment (Lab PM), LP3 2019
+Task 2: Database design -- schema from BCNF decomposition
+Author: Abel Haile Magicho
+
+Decomposition of Domain(...) (see FD.txt) with the BCNF
+algorithm.  At each step a violated FD X -> Y is used to split
+the current relation into (X, Y) and (relation minus Y).
+Keys are marked with *, references with ->.
+=====================================================================
+
+Step by step (only the informative splits are shown):
+
+ 1. Split on dep -> depabbr (D1):
+        Departments(dep*, depabbr)
+    and the rest.  In the Departments table, depabbr -> dep (D2)
+    also holds and depabbr is a second key: add UNIQUE depabbr.
+    The split is lossless and D1/D2 no longer violate BCNF.
+
+ 2. Split on prog -> progabbr (P1):
+        ProgramsFD(prog*, progabbr)
+
+ 3. Split on idnr -> sname, login, prog, branch (S1+S3):
+        StudentsFD(idnr*, sname, login)
+    login -> idnr (S2) makes login a second key: UNIQUE login.
+    The student's programme and branch cannot stay here: they
+    also take part in other FDs, so they form their own tables:
+
+ 4. Splits for the student's programme/branch:
+        StudentProgrammes(idnr*, prog)
+            idnr -> StudentsFD(idnr)
+        StudentBranchesFD(idnr*, branch, prog)
+            -- key is idnr (S3: one branch per student)
+
+ 5. Split on ccode -> cname, credits, givendept (C1):
+        CoursesFD(ccode*, cname, credits, givendept)
+            givendept -> Departments(dep)
+
+ 6. Split on ccode -> seats (C2):
+        LimitedCoursesFD(ccode*, seats)
+            ccode -> CoursesFD(ccode)
+
+ 7. Split on (prog, branch) -> recomcredits (B1):
+        BranchRequirementsFD(prog*, branch*, recomcredits)
+
+ 8. Split on (idnr, ccode) -> grade (T1):
+        TakenCourseFD(idnr*, ccode*, grade)
+
+ 9. Splits on (ccode, idnr) -> position and
+    (ccode, position) -> idnr (W1, W2):
+        WaitingListFD(ccode*, idnr*, position)
+    Here W2 is also satisfied: (ccode, position) is a second
+    key of this table: UNIQUE (ccode, position).
+
+10. What remains after removing all determined attributes is
+    the pure "relationship residue" of the universal relation:
+    which student reads which course, the hosts, classifications,
+    prerequisites and mandatory/recommended connections:
+
+        StudentCourses(idnr*, ccode*)          -- reading/taking
+        HostedByFD(prog*, hostdep*)            -- hosting (M:N)
+        ClassifiedAsFD(ccode*, classif*)       -- classifications
+        PrerequisitesFD(ccode*, prereq*)       -- prerequisites
+        MandatoryProgramFD(ccode*, prog*)
+        MandatoryBranchFD(ccode*, prog*, branch*)
+        RecommendedBranchFD(ccode*, prog*, branch*)
+
+    StudentCourses is not needed as a separate table: it is the
+    union of what TakenCourseFD, Registered and WaitingListFD
+    already record (a student is connected to a course by having
+    taken it, being registered, or waiting).  We keep the three
+    concrete relations:
+
+        Registered(ccode*, idnr*)
+
+Resulting BCNF schema
+---------------------
+    Departments(dep*, depabbr)                 UNIQUE depabbr
+    ProgramsFD(prog*, progabbr)
+    HostedByFD(prog*, hostdep*)
+        prog    -> ProgramsFD(prog)
+        hostdep -> Departments(dep)
+    StudentsFD(idnr*, sname, login)            UNIQUE login
+    StudentProgrammes(idnr*, prog)
+        idnr -> StudentsFD(idnr); prog -> ProgramsFD(prog)
+    StudentBranchesFD(idnr*, branch, prog)
+        idnr -> StudentsFD(idnr)
+        (branch, prog) -> BranchesFD(branch, prog)
+    BranchesFD(prog*, branch*)
+        prog -> ProgramsFD(prog)
+    CoursesFD(ccode*, cname, credits, givendept)
+        givendept -> Departments(dep)
+    LimitedCoursesFD(ccode*, seats)
+    ClassifiedAsFD(ccode*, classif*)
+    PrerequisitesFD(ccode*, prereq*)
+    MandatoryProgramFD(ccode*, prog*)
+    MandatoryBranchFD(ccode*, prog*, branch*)
+    RecommendedBranchFD(ccode*, prog*, branch*)
+    BranchRequirementsFD(prog*, branch*, recomcredits)
+    TakenCourseFD(idnr*, ccode*, grade)
+    Registered(ccode*, idnr*)
+    WaitingListFD(ccode*, idnr*, position)     UNIQUE (ccode, position)
+
+Every determinant in this schema is a key of its table (the only
+FDs that hold are the ones listed in FD.txt, each now local to
+one table), so the schema is in BCNF.  Every split was on an FD,
+hence the decomposition is lossless, and all FDs are preserved
+(each FD of FD.txt is testable within a single table above).

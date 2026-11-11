@@ -1,0 +1,142 @@
+=====================================================================
+TDA357 / DIT621 -- Database Programming Assignment (Lab PM), LP3 2019
+Task 2: Database design -- functional dependencies
+Author: Abel Haile Magicho
+
+The functional dependencies below are read off the DOMAIN
+DESCRIPTION only (not the E-R model and not the Task 1 schema).
+=====================================================================
+
+The universal relation
+----------------------
+All attributes of the domain, with disambiguated names:
+
+    Domain(
+        dep,          -- department name
+        depabbr,      -- department abbreviation
+        prog,         -- programme name
+        progabbr,     -- programme abbreviation
+        hostdep,      -- a department hosting the programme
+        branch,       -- branch name
+        sname,        -- student name
+        idnr,         -- student identification number
+        login,        -- student's university login
+        ccode,        -- course code
+        cname,        -- course name
+        credits,      -- credits of the course
+        givendept,    -- department giving the course
+        classif,      -- a classification of the course
+        prereq,       -- a prerequisite course code
+        grade,        -- grade of a student in a course
+        seats,        -- number of seats of a limited course
+        position,     -- position of a student in a waiting list
+        recomcredits  -- recommended credits required by a branch
+    )
+
+A row of Domain is understood as: a student (idnr) of programme
+prog reading/taking course ccode, where the student's branch,
+the course's classifications and prerequisites, the programme's
+hosts etc. are all spelled out in the same row.  Attributes that
+are "multi-valued" for an entity (hosts of a programme,
+classifications and prerequisites of a course, courses of a
+student) therefore appear in many rows, once per combination.
+
+Functional dependencies
+-----------------------
+From the domain description (dependencies that follow from the
+listed ones by Armstrong's axioms are omitted):
+
+Departments:
+  (D1) dep     -> depabbr     department names are unique, so a
+                              name determines the abbreviation
+  (D2) depabbr -> dep         department abbreviations are unique
+
+Programmes:
+  (P1) prog -> progabbr       programme names are unique
+       -- NOTE: progabbr does NOT determine prog: programme
+       -- abbreviations are explicitly "not necessarily" unique.
+       -- NOTE: prog does NOT determine hostdep: several
+       -- departments may collaborate on hosting a programme,
+       -- so hosting is genuinely many-to-many (no FD).
+
+Branches:
+  (B1) prog, branch -> recomcredits
+                              within a programme a branch name is
+                              unique, and the branch fixes how many
+                              recommended credits its students must
+                              read ("a certain amount")
+       -- branch alone determines nothing: the same branch name
+       -- can occur in several programmes.
+
+Students:
+  (S1) idnr  -> sname, login, prog
+  (S2) login -> idnr, sname, prog
+                              both the id number and the login
+                              identify a student
+  (S3) idnr -> branch         a student chooses a single branch
+                              (together with S1, the branch is a
+                              branch of the student's own programme)
+
+Courses:
+  (C1) ccode -> cname, credits, givendept
+  (C2) ccode -> seats         for a limited course, its code
+                              fixes the number of seats (courses
+                              that are not limited have no seats;
+                              in the decomposed schema this FD
+                              lives in LimitedCourses only)
+       -- cname does NOT determine ccode (names are not stated
+       -- to be unique), and no FD determines classif or prereq:
+       -- a course may have any number of classifications and
+       -- prerequisites (including none).
+
+Taken courses:
+  (T1) idnr, ccode -> grade   a student gets one grade per course
+
+Waiting lists:
+  (W1) ccode, idnr -> position   a waiting student has one
+                                 position in a course's queue
+  (W2) ccode, position -> idnr   positions are unique within a
+                                 course's queue: at most one
+                                 student holds a given position
+
+Explicitly NOT functional dependencies (multi-valued facts):
+  prog -> hostdep, ccode -> classif, ccode -> prereq,
+  idnr -> ccode (a student reads many courses),
+  prog -> ccode for mandatory/recommended courses, etc.
+
+Keys of Domain
+--------------
+The attributes hostdep, classif and prereq are not determined by
+anything (they are the "multi-valued dimensions" of programmes
+and courses), and ccode and idnr are needed to pin down grades
+and positions.  The (single) candidate key is:
+
+    { idnr, ccode, hostdep, classif, prereq }
+
+Check: from idnr we get the student, his/her programme and
+branch (S1, S3) and then recomcredits (B1) and progabbr (P1);
+from ccode we get the course data and seats (C1, C2), and with
+givendept also its abbreviation (D1); from (idnr, ccode) we get
+grade (T1) and position (W1).  Dropping any attribute loses one
+of the multi-valued dimensions or one of the two "protagonists"
+(student/course), so the key is minimal.  (Equivalent keys arise
+by swapping idnr with login, by (S2).)
+
+BCNF violations in Domain
+-------------------------
+A determinant violates BCNF if it is not a superkey.  With the
+key above, ALL of the following are BCNF violations in Domain:
+
+  D1, D2   dep / depabbr are not superkeys
+  P1       prog is not a superkey
+  B1       (prog, branch) is not a superkey
+  S1, S2   idnr / login are not superkeys
+  C1, C2   ccode is not a superkey
+  T1       (idnr, ccode) is not a superkey (hostdep, classif and
+           prereq vary independently of it)
+  W2       (ccode, position) is not a superkey
+
+Only W1's determinant (ccode, idnr) extended by the remaining
+key attributes is a superkey, as expected for the "central"
+relationship.  Domain is thus far from BCNF, which is exactly
+what the decomposition in FD-schema.txt repairs.
